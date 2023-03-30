@@ -15,7 +15,7 @@
 **Option a. 使用 `conda` :**
 
 ```shell
-conda create -n 2023RL python=3.9
+conda create -n 2023RL python=3.7
 conda activate 2023RL
 ```
 
