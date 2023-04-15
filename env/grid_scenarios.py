@@ -2,7 +2,9 @@
 Toy environment examples.
 """
 
-from gym import spaces
+# from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 
 from env.grid_core import GridWorldEnv
 
@@ -75,11 +77,12 @@ class MiniWorld(GridWorldEnv):
         """
         This function is used for rendering env when finally get a value table.
         """
+        raise Exception("deprecated operation")
         v_min = values.min()
         v_max = values.max()
         v_norm = (2 * (values - v_min) / (v_max - v_min) - 1) * 8.0
         for i in range(len(v_norm)):
-            x, y = self._state_to_xy(i)
+            x, y = self.state_to_xy(i)
             self.grids.set_reward(x, y, v_norm[i])
 
 

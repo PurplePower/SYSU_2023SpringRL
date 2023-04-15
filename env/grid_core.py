@@ -2,10 +2,17 @@
 Grid World toy environment.
 """
 
-import gym
-from gym import spaces
-from gym.utils import seeding
+# import gym
+# from gym import spaces
+# from gym.utils import seeding
+import gymnasium as gym
+from gymnasium import spaces
+from gymnasium.utils import seeding
+import matplotlib.pyplot as plt
+import pygame
+import numpy as np
 
+from itertools import product
 
 class Grid:
     def __init__(self,
@@ -84,7 +91,7 @@ class GridMatrix:
             xx, yy = x, y
         elif isinstance(x, tuple):
             xx, yy = x[0], x[1]
-        assert (0 <= xx < self.n_width and 0 <= yy < self.n_height, "coordinates should be in reasonable range")
+        assert (0 <= xx < self.n_width and 0 <= yy < self.n_height), "coordinates should be in reasonable range"
         index = yy * self.n_width + xx
         return self.grids[index]
 
@@ -153,6 +160,7 @@ class GridWorldEnv(gym.Env):
         self.u_size = u_size
         self.n_width = n_width
         self.n_height = n_height
+        self.textbox_height = 2 * u_size
         self.width = u_size * n_width
         self.height = u_size * n_height
         self.default_reward = default_reward
@@ -186,6 +194,13 @@ class GridWorldEnv(gym.Env):
         self.state = None
         self.agent = None
         self.agent_trans = None
+        
+        # pygame rendering stuffs
+        self.screen = None
+        self.font = None
+        self.arrow = None
+        self.color_white = (255, 255, 255)
+        self.color_black = (0, 0, 0)
 
     def _adjust_size(self):
         """
@@ -206,7 +221,7 @@ class GridWorldEnv(gym.Env):
         assert self.action_space.contains(action), "{!r} ({:s}) invalid".format(action, type(action))
 
         self.action = action                            # action for rendering
-        old_x, old_y = self._state_to_xy(self.state)
+        old_x, old_y = self.state_to_xy(self.state)
         new_x, new_y = old_x, old_y
 
         # wind effect: additional movement when leaving current grid
@@ -239,13 +254,13 @@ class GridWorldEnv(gym.Env):
         if self.grids.get_dtype(new_x, new_y) == 1:
             new_x, new_y = old_x, old_y
 
-        self.state = self._xy_to_state(new_x, new_y)
+        self.state = self.xy_to_state(new_x, new_y)
         self.reward = self.grids.get_reward(new_x, new_y)
-        done = self._is_end_state(new_x, new_y)
+        done = self.is_end_state(new_x, new_y)
         info = {'x': new_x, 'y': new_y}
         return self.state, self.reward, done, info
 
-    def _state_to_xy(self, s):
+    def state_to_xy(self, s):
         """
         Set status into a one-axis coordinate value.
         :return: x, y
@@ -255,7 +270,7 @@ class GridWorldEnv(gym.Env):
         y = int((s - x) / self.n_width)
         return x, y
 
-    def _xy_to_state(self, x, y=None):
+    def xy_to_state(self, x, y=None):
         """
         Set coordinate value into status.
         :param x: coordinate x or tuple type of (x,y)
@@ -279,14 +294,14 @@ class GridWorldEnv(gym.Env):
             self.grids.set_type(x, y, t)
 
     def reset(self):
-        self.state = self._xy_to_state(self.start)
+        self.state = self.xy_to_state(self.start)
         return self.state
 
-    def _is_end_state(self, x, y=None):
+    def is_end_state(self, x, y=None):
         if y is not None:
             xx, yy = x, y
         elif isinstance(x, int):
-            xx, yy = self._state_to_xy(x)
+            xx, yy = self.state_to_xy(x)
         else:
             assert(isinstance(x, tuple)), "Incomplete coordinate values."
             xx, yy = x[0], x[1]
@@ -296,75 +311,155 @@ class GridWorldEnv(gym.Env):
                 return True
         return False
 
-    def render(self, mode='human', close=False):
-        if close:
-            if self.viewer is not None:
-                self.viewer.close()
-                self.viewer = None
+    # def render(self, mode='human', close=False):
+    #     if close:
+    #         if self.viewer is not None:
+    #             self.viewer.close()
+    #             self.viewer = None
+    #         return
+    #     u_size = self.u_size
+    #     m = 2  # gaps between two cells
+
+    #     if self.viewer is None:
+    #         from gym.envs.classic_control import rendering
+    #         self.viewer = rendering.Viewer(self.width, self.height)
+
+    #         # draw cells
+    #         for x in range(self.n_width):
+    #             for y in range(self.n_height):
+    #                 v = [
+    #                     (x * u_size + m, y * u_size + m),
+    #                     ((x + 1) * u_size - m, y * u_size + m),
+    #                     ((x + 1) * u_size - m, (y + 1) * u_size - m),
+    #                     (x * u_size + m, (y + 1) * u_size - m)
+    #                 ]
+    #                 rect = rendering.FilledPolygon(v)
+    #                 r = self.grids.get_reward(x, y) / 10
+    #                 if r < 0:
+    #                     rect.set_color(0.9 - r, 0.9 + r, 0.9 + r)
+    #                 elif r > 0:
+    #                     # rect.set_color(0.3, 0.5 + r, 0.3)
+    #                     rect.set_color(0.5, 0.5 + r, 0.5)
+    #                 else:
+    #                     rect.set_color(0.9, 0.9, 0.9)
+    #                 self.viewer.add_geom(rect)
+
+    #                 # draw frameworks
+    #                 v_outline = [
+    #                     (x * u_size + m, y * u_size + m),
+    #                     ((x + 1) * u_size - m, y * u_size + m),
+    #                     ((x + 1) * u_size - m, (y + 1) * u_size - m),
+    #                     (x * u_size + m, (y + 1) * u_size - m)
+    #                 ]
+    #                 outline = rendering.make_polygon(v_outline, False)
+    #                 outline.set_linewidth(3)
+
+    #                 if self._is_end_state(x, y):
+    #                     # give end state cell a golden outline
+    #                     outline.set_color(0.9, 0.9, 0)
+    #                     self.viewer.add_geom(outline)
+    #                 if self.start[0] == x and self.start[1] == y:
+    #                     outline.set_color(0.5, 0.5, 0.8)
+    #                     self.viewer.add_geom(outline)
+    #                 if self.grids.get_dtype(x, y) == 1:
+    #                     # give obstacle cell a gray outline
+    #                     rect.set_color(0.3, 0.3, 0.3)
+    #                 else:
+    #                     pass
+
+    #         # draw agent
+    #         self.agent = rendering.make_circle(u_size / 4, 30, True)
+    #         self.agent.set_color(1.0, 1.0, 0.0)
+    #         self.viewer.add_geom(self.agent)
+    #         self.agent_trans = rendering.Transform()
+    #         self.agent.add_attr(self.agent_trans)
+
+    #     # update position of an agent
+    #     x, y = self._state_to_xy(self.state)
+    #     self.agent_trans.set_translation((x + 0.5) * u_size, (y + 0.5) * u_size)
+
+    #     return self.viewer.render(return_rgb_array=(mode == 'rgb_array'))
+
+    
+    def _draw_arrow(self, screen, x, y, color, angle=0):
+        def rotate(pos, angle):	
+            cen = (0+x,0+y)
+            angle *= -(np.pi/180)
+            cos_theta = np.cos(angle)
+            sin_theta = np.sin(angle)
+            ret = ((cos_theta * (pos[0] - cen[0]) - sin_theta * (pos[1] - cen[1])) + cen[0],
+            (sin_theta * (pos[0] - cen[0]) + cos_theta * (pos[1] - cen[1])) + cen[1])
+            return ret
+
+        p0 = rotate((0+x  ,-3+y),angle)
+        p1 = rotate((0+x  ,3+y ),angle)
+        p2 = rotate((6+x ,0+y ),angle)
+    
+        pygame.draw.polygon(screen, color, [p0,p1,p2])
+    
+    def render(self, values, mode='human', pi=None, title=''):
+        assert len(values.shape) == 1
+        
+        if mode != 'human':
             return
+        
+        if self.screen is None:
+            pygame.init()
+            self.screen = pygame.display.set_mode(
+                [self.width, self.height + self.textbox_height], pygame.SHOWN if mode == 'human' else pygame.HIDDEN)
+            self.font = pygame.font.SysFont('YaHei', 32)
+            
+        self.screen.fill(self.color_white)   # clean screen
         u_size = self.u_size
         m = 2  # gaps between two cells
-
-        if self.viewer is None:
-            from gym.envs.classic_control import rendering
-            self.viewer = rendering.Viewer(self.width, self.height)
-
-            # draw cells
-            for x in range(self.n_width):
-                for y in range(self.n_height):
-                    v = [
-                        (x * u_size + m, y * u_size + m),
-                        ((x + 1) * u_size - m, y * u_size + m),
-                        ((x + 1) * u_size - m, (y + 1) * u_size - m),
-                        (x * u_size + m, (y + 1) * u_size - m)
-                    ]
-                    rect = rendering.FilledPolygon(v)
-                    r = self.grids.get_reward(x, y) / 10
-                    if r < 0:
-                        rect.set_color(0.9 - r, 0.9 + r, 0.9 + r)
-                    elif r > 0:
-                        # rect.set_color(0.3, 0.5 + r, 0.3)
-                        rect.set_color(0.5, 0.5 + r, 0.5)
-                    else:
-                        rect.set_color(0.9, 0.9, 0.9)
-                    self.viewer.add_geom(rect)
-
-                    # draw frameworks
-                    v_outline = [
-                        (x * u_size + m, y * u_size + m),
-                        ((x + 1) * u_size - m, y * u_size + m),
-                        ((x + 1) * u_size - m, (y + 1) * u_size - m),
-                        (x * u_size + m, (y + 1) * u_size - m)
-                    ]
-                    outline = rendering.make_polygon(v_outline, False)
-                    outline.set_linewidth(3)
-
-                    if self._is_end_state(x, y):
-                        # give end state cell a golden outline
-                        outline.set_color(0.9, 0.9, 0)
-                        self.viewer.add_geom(outline)
-                    if self.start[0] == x and self.start[1] == y:
-                        outline.set_color(0.5, 0.5, 0.8)
-                        self.viewer.add_geom(outline)
-                    if self.grids.get_dtype(x, y) == 1:
-                        # give obstacle cell a gray outline
-                        rect.set_color(0.3, 0.3, 0.3)
-                    else:
-                        pass
-
-            # draw agent
-            self.agent = rendering.make_circle(u_size / 4, 30, True)
-            self.agent.set_color(1.0, 1.0, 0.0)
-            self.viewer.add_geom(self.agent)
-            self.agent_trans = rendering.Transform()
-            self.agent.add_attr(self.agent_trans)
-
-        # update position of an agent
-        x, y = self._state_to_xy(self.state)
-        self.agent_trans.set_translation((x + 0.5) * u_size, (y + 0.5) * u_size)
-
-        return self.viewer.render(return_rgb_array=(mode == 'rgb_array'))
-
+        
+        # draw texts
+        textbox = self.screen.blit(self.font.render(title, 1, self.color_black), (10, 10)) 
+        
+        
+        # draw value function
+        largest = max(abs(values.max()), abs(values.min()))
+        if largest != 0:
+            values = values / largest
+        
+        
+        for x, y in product(range(self.n_width), range(self.n_height)):
+            # notice pygame coordinate's origin is at top-left corner
+            rect = pygame.Rect(x * u_size + m, (self.n_height - y - 1) * u_size + m + self.textbox_height, u_size-2*m, u_size-2*m)
+            if (x, y, 1) in self.types:
+                pygame.draw.rect(self.screen, (20, 20, 20), rect)   # render obstacles as dark cells
+                continue
+            
+            if self.is_end_state(x, y):
+                pygame.draw.rect(self.screen, (230, 230, 0), rect, width=2)
+                v = self.grids.get_reward(x, y)
+            else:
+                v = values[self.xy_to_state(x, y)]
+                
+            
+            if v < 0:
+                color = (128 + abs(v) * 127, 128, 128)  # red for bad values
+            else:
+                color = (128, 128 + abs(v) * 127, 128 + abs(v) * 16)     # green for good
+                
+            rect = pygame.draw.rect(self.screen, color, rect)   
+            
+            if pi is not None and (x, y, 1) not in self.types and not self.is_end_state(x, y):
+                rotates = [180, 0, 90, 270]
+                for act, prob in enumerate(pi[self.xy_to_state(x, y)]):
+                    if prob > 0:
+                        size = (int(u_size/3*prob), int(u_size/3*prob))
+                        arrow_point = [
+                            (rect.centerx-size[0], rect.centery),
+                            (rect.centerx+size[0], rect.centery),
+                            (rect.centerx, rect.centery-size[1]),
+                            (rect.centerx, rect.centery+size[1]),
+                        ][act]
+                        pygame.draw.line(self.screen, self.color_black, rect.center, arrow_point, width=2)
+                        self._draw_arrow(self.screen, arrow_point[0], arrow_point[1], self.color_black, rotates[act])
+            
+        pygame.display.flip()
+        
 
 if __name__ == "__main__":
     env = GridWorldEnv()
@@ -373,7 +468,7 @@ if __name__ == "__main__":
     n_action = env.action_space
     print(f"state space: {n_state}, action space:{n_action}")
     env.render()
-    for _ in range(1000):
+    for _ in range(3):
         env.render()
 
     print("env closed")
