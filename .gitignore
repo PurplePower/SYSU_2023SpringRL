@@ -1,2 +1,5 @@
 .idea
 *.pyc
+*.pt
+
+Assignment2/saves/*

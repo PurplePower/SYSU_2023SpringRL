@@ -7,7 +7,7 @@ from typing import Union
 import numpy as np
 from loguru import logger
 
-from GeneralPolicyIteration import GeneralPolicyIteration
+from agents.GeneralPolicyIteration import GeneralPolicyIteration
 from env.grid_scenarios import GridWorldEnv
 
 class TemporalDifference(GeneralPolicyIteration):
@@ -123,9 +123,6 @@ class TemporalDifference(GeneralPolicyIteration):
         
         
     def policy_iteration(self, n_episode, record_return=False, log_period=100):
-        """
-        Currently running on-policy control.
-        """
         env = self.env
         
         eps_returns = []
@@ -166,7 +163,7 @@ class TemporalDifference(GeneralPolicyIteration):
                 
                 # update q if we have n steps
                 if len(history) >= self.n_step:
-                    self._policy_evaluate_and_improve(history, s_next, a_next, im_next)
+                    self._policy_evaluate_and_improve(history, s_next, a_next, im_next, history_return)
                     history.pop(0)
                     
                 s, a, im, p, last_reward = s_next, a_next, im_next, p_next, reward

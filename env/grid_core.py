@@ -397,7 +397,7 @@ class GridWorldEnv(gym.Env):
     
         pygame.draw.polygon(screen, color, [p0,p1,p2])
     
-    def render(self, values, mode='human', pi=None, title=''):
+    def render(self, values, mode='human', pi=None, title='', screenshot_save_path=None):
         assert len(values.shape) == 1
         
         if mode != 'human':
@@ -431,7 +431,9 @@ class GridWorldEnv(gym.Env):
                 continue
             
             if self.is_end_state(x, y):
-                pygame.draw.rect(self.screen, (230, 230, 0), rect, width=2)
+                w = 2
+                frame = pygame.Rect(rect.left-w, rect.top-w, rect.width+2*w, rect.height+2*w)
+                pygame.draw.rect(self.screen, (230, 230, 0), frame, width=w)
                 v = self.grids.get_reward(x, y)
             else:
                 v = values[self.xy_to_state(x, y)]
@@ -459,6 +461,8 @@ class GridWorldEnv(gym.Env):
                         self._draw_arrow(self.screen, arrow_point[0], arrow_point[1], self.color_black, rotates[act])
             
         pygame.display.flip()
+        if screenshot_save_path is not None:
+            pygame.image.save(self.screen, screenshot_save_path)
         
 
 if __name__ == "__main__":
