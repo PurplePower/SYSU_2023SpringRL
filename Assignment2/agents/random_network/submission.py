@@ -4,10 +4,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-from utils.make_env import make_env
+from utils.make_env import _make_env_legacy
 
 
-ENV = make_env('simple_spread', discrete_action=True)
+ENV = _make_env_legacy('simple_spread', discrete_action=True)
 N_AGENT = 3
 N_ACTION = ENV.action_space[0].n  # 5
 N_OBS = ENV.observation_space[0].shape[0]  # 18

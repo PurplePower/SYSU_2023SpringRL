@@ -1,6 +1,14 @@
+import numpy as np
 from pettingzoo.mpe._mpe_utils.simple_env import SimpleEnv
 from pettingzoo import AECEnv
 from pettingzoo.utils.wrappers import BaseWrapper
+
+import sys
+import os
+
+sys.path.append('multiagent-particle-envs')
+
+from multiagent.environment import MultiAgentEnv
 
 
 
@@ -24,4 +32,142 @@ def get_simple_env(env) -> SimpleEnv:
             env = env.env
 
     return env
+
+
+class ClassicalEnv:
+    """
+    Classical environment. Use it just like single agent env except that
+    you pass actions and get observations of all agents.
+    """
+
+    def __init__(self) -> None:
+        self.action_spaces = self.state_space = self.action_space = None
+        self.action_dim = self.state_dim = 0
+        pass
+
+    def reset(self):
+        pass
+
+
+    def step(self, actions):
+        pass
+
+
+    def close(self):
+        pass
+
+
+    @property
+    def num_agents(self):
+        pass
+
+    @property
+    def agents(self):
+        pass
+
+
+
+
+
+class PettingZooWrapperEnv(ClassicalEnv):
+
+    def __init__(self, pz_env: BaseWrapper|SimpleEnv) -> None:
+        super().__init__()
+        pz_env.reset()
+
+        self.action_spaces = pz_env.action_spaces
+        self.action_space = pz_env.action_space
+        self.state_space = pz_env.state_space
+        self.env = pz_env
+
+        self.action_dim = pz_env.action_space(pz_env.agents[0]).n
+        self.state_dim = pz_env.state_space.shape[0]
+
+
+    def _get_obs(self):
+        return [self.env.observe(a) for a in self.agents]
+    
+
+    def _get_rewards(self):
+        return [self.env.rewards[a] for a in self.agents]
+
+    def reset(self):
+        self.env.reset()
+        return self._get_obs()
+
+
+    def step(self, actions):
+        for act in actions:
+            self.env.step(act)
+
+        # return next_states, rewards, done, infos
+        next_states = self._get_obs()
+        rewards = self._get_rewards()
+        all_terminated = [self.env.terminations[a] for a in self.agents]
+        all_truncated = [self.env.truncations[a] for a in self.agents]
+        done = all(all_terminated) and all(all_truncated)
+        infos = self.env.infos
+
+        return next_states, rewards, done, infos
+    
+
+    def close(self):
+        return self.env.close()
+
+
+    @property
+    def num_agents(self):
+        return self.env.num_agents
+    
+    @property
+    def agents(self):
+        return self.env.agents
+
+    pass
+
+
+
+class OpenAIWrapperEnv(ClassicalEnv):
+
+    def __init__(self, env:MultiAgentEnv) -> None:
+        super().__init__()
+        self.env = env
+        self.action_space = self.action_spaces = env.action_space
+        self.state_space = env.observation_space
+        self.action_dim = env.action_space[0].n    # env.action_space is a list of Space
+        self.state_dim = sum([s.shape[0] for s in env.observation_space])
+
+
+    def _process_dtype(self, s):
+        return [_s.astype(np.float32) for _s in s]
+    
+
+    def reset(self):
+        return self._process_dtype(self.env.reset())
+    
+    
+    def step(self, actions):
+        # make actions as one-hot
+        actions = [np.eye(self.action_dim)[act] for act in actions]
+        s, r, done_list, i = self.env.step(actions)
+        s = self._process_dtype(s)
+        r = self._process_dtype(r)
+        done = all(done_list)
+        return s, r, done, i
+    
+
+    def close(self):
+        return self.env.close()
+
+
+    @property
+    def num_agents(self):
+        return self.env.n
+    
+
+    @property
+    def agents(self):
+        return self.env.agents
+
+
 

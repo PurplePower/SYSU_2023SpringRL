@@ -6,6 +6,8 @@ from pettingzoo.mpe._mpe_utils.simple_env import SimpleEnv
 
 from typing import List
 
+from utils.env_helper import ClassicalEnv
+
 
 
 class SimpleModel(torch.nn.Module):
@@ -144,7 +146,7 @@ class DDPGAgent:
                 torch.rand(batch_size, device=self.device) < self.epsilon, random_actions, best_actions)
         else:
             # sample from given logits
-            actions = F.gumbel_softmax(logits, tau=1, hard=True)
+            actions = F.gumbel_softmax(logits, tau=0.5, hard=True)
 
         assert actions.shape[0] == batch_size
         return actions
@@ -168,7 +170,7 @@ class MADDPGTrainer:
     """
 
     def __init__(
-        self, env:SimpleEnv, actor_lr=1e-3, critic_lr=1e-3, hidden_dim=64, 
+        self, env:ClassicalEnv, actor_lr=1e-3, critic_lr=1e-3, hidden_dim=64, 
         # state_dim=None, action_dim=None, 
         gamma=0.99, tau=0.01, epsilon=0.01, eps_decay=0.998, device='cuda', 
         lr_scheduler=None, lr_scheduler_args=None
@@ -176,8 +178,8 @@ class MADDPGTrainer:
         
         self.env = env
         self.actor_lr, self.critic_lr = actor_lr, critic_lr
-        self.state_dim, self.action_dim = env.state_space.shape[0], env.action_space(env.agents[0]).n
-        self.state_dim_per_agent = self.state_dim // env.num_agents # TODO
+        self.state_dim, self.action_dim = env.state_dim, env.action_dim
+        self.state_dim_per_agent = self.state_dim // env.num_agents
         self.critic_criterion = torch.nn.MSELoss()
         self.hidden_dim = hidden_dim
 
@@ -187,11 +189,13 @@ class MADDPGTrainer:
         self.device = device
 
         # sum of states and actions from all agents
-        self.critic_input_dim = 0
-        for act_s in env.action_spaces.values():
-            self.critic_input_dim += act_s.n
+        # self.critic_input_dim = 0
+        # for act_s in env.action_spaces.values():
+        #     self.critic_input_dim += act_s.n
 
-        self.critic_input_dim += env.state_space.shape[0]
+        # self.critic_input_dim += env.state_space.shape[0]
+
+        self.critic_input_dim = env.action_dim * env.num_agents + env.state_dim
 
 
         self.agents: List[DDPGAgent] = [
@@ -253,7 +257,6 @@ class MADDPGTrainer:
 
         #########################
         # build critic loss
-        cur_agent.critic_optimizer.zero_grad()
 
         next_actions = [
             policy(next_state)
@@ -271,16 +274,15 @@ class MADDPGTrainer:
         # thus detach it from current graph
         critic_loss = self.critic_criterion(critic_value, target_critic_value.detach())
 
+        cur_agent.critic_optimizer.zero_grad()
         critic_loss.backward()
         cur_agent.critic_optimizer.step()
 
         ###########################
         # build actor loss: to maximize Q value
 
-        cur_agent.actor_optimizer.zero_grad()
-
         cur_actor_out = cur_agent.actor(states[agent_id])
-        cur_critic_in = F.gumbel_softmax(cur_actor_out) # may lower tau
+        cur_critic_in = F.gumbel_softmax(cur_actor_out, tau=0.5) # may lower tau
         all_actor_actions = []
         for i, (pi, _state) in enumerate(zip(self.policies, states)):
             if i == agent_id:
@@ -293,6 +295,7 @@ class MADDPGTrainer:
         actor_loss += (cur_actor_out ** 2).mean() * 1e-3    #? some sort of regularization?
         # TODO actor_loss add entropy
 
+        cur_agent.actor_optimizer.zero_grad()
         actor_loss.backward()
         cur_agent.actor_optimizer.step()
 

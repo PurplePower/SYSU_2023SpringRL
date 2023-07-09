@@ -5,28 +5,40 @@ from pettingzoo.mpe import simple_spread_v3
 from time import time
 from pathlib import Path
 import pygame
-import pygame.camera
+from  moviepy.video.io.ImageSequenceClip import ImageSequenceClip
+
+import os
+os.environ['SUPPRESS_MA_PROMPT'] = "1"
 
 from algorithms.MADDPGTrainer import MADDPGTrainer
 from utils.env_helper import get_simple_env
+from utils.env_helper import PettingZooWrapperEnv
 
 pygame.init()
-pygame.camera.init()
+
+def empty_dir(path: Path):
+    for file in path.glob("*"):
+        if file.is_file():
+            file.unlink()
 
 
 if __name__ == '__main__':
     save_path = Path(r'SYSU_2023SpringRL\Assignment2\saves')
-    model_path = save_path / Path('avg=-8.02203-i_episode=100.pt')
+    model_path = save_path / Path(r'models\pz\avg=-4.16126-i_episode=9880.pt')
+    video_save_path = save_path / 'videos'
+    video_save_path.mkdir(exist_ok=True)
+    empty_dir(video_save_path)
 
     num_episodes = 100
     hidden_dim = 64
-    episode_length = 25
+    episode_length = 100
     
     env = simple_spread_v3.env(max_cycles=episode_length, render_mode='human')
     env.reset()
     simple_env = get_simple_env(env)
+    env = PettingZooWrapperEnv(env)
     
-    state_dim, action_dim = env.state_space.shape[0], env.action_spaces['agent_0'].n
+    state_dim, action_dim = env.state_dim, env.action_dim
 
     trainer = MADDPGTrainer(
         env, hidden_dim=hidden_dim
@@ -41,34 +53,31 @@ if __name__ == '__main__':
 
     for i_episode in range(num_episodes):
         episode_step = episode_return = 0
-        env.reset()
-        states = env.state()
-        actions = [None for _ in range(env.num_agents)]
+        states = env.reset()
+        
+        generate_video = i_episode % (num_episodes // 10) == 0
+        frames = []
 
-        for _i, agent in enumerate(env.agent_iter()):
-            episode_step, agent_id = _i // env.num_agents, _i % env.num_agents
-            _o, _cr, _terminated, _truncated, _info = env.last()
-            if _terminated or _truncated:
-                break
-
-            # take actions
-            obs = env.observe(agent)
+        for episode_step in range(episode_length):
             with torch.no_grad():
-                action = trainer.take_action(agent_id, obs, explore=False)
+                actions = [
+                    trainer.take_action(_i, s, explore=False) for _i, s in enumerate(states)
+                ]
 
-            env.step(action)
+            next_states, rewards, done, infos = env.step(actions)
+            episode_return += np.sum(rewards)
 
-            if agent_id == env.num_agents - 1:
-                # a global step finished
-                rewards = [env.rewards[a] for a in env.agents]
-                episode_return += sum(rewards)
-                pygame.image.save(simple_env.screen, save_path / 'imgs/screenshot.png')
+            if generate_video:
+                frames.append(pygame.surfarray.array3d(simple_env.screen))
 
-            pass
 
         episode_return *= 2 / episode_length
         return_list.append(episode_return)
         print(f'Episode {i_episode}: return {episode_return}')
+
+        if generate_video:
+            clip = ImageSequenceClip(frames, fps=10)
+            clip.write_videofile(str(video_save_path / f'episode {i_episode}.mp4'))
 
         pass
 

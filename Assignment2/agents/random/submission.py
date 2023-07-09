@@ -1,8 +1,8 @@
 import numpy as np
-from utils.make_env import make_env
+from utils.make_env import _make_env_legacy
 
 
-ENV = make_env('simple_spread', discrete_action=True)
+ENV = _make_env_legacy('simple_spread', discrete_action=True)
 N_AGENT = 3
 N_ACTION = ENV.action_space[0].n
 

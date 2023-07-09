@@ -1,7 +1,7 @@
 import argparse
 import time
 import numpy as np
-from utils.make_env import make_env
+from utils.make_env import _make_env_legacy
 
 # TODO: replace with your models
 from agents.random.submission import Agents as RandomSampleAgents
@@ -9,7 +9,7 @@ from agents.random_network.submission import Agents as RandomNetworkAgents
 
 
 def run(config):
-    env = make_env(config.env_id, discrete_action=True)
+    env = _make_env_legacy(config.env_id, discrete_action=True)
 
     # TODO: replace with you own agent model
     agents = RandomNetworkAgents(env.observation_space[0].shape[0], env.action_space[0].n)
