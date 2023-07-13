@@ -2,6 +2,7 @@ import numpy as np
 from pettingzoo.mpe._mpe_utils.simple_env import SimpleEnv
 from pettingzoo import AECEnv
 from pettingzoo.utils.wrappers import BaseWrapper
+import gymnasium as gym
 
 import sys
 import os
@@ -43,6 +44,7 @@ class ClassicalEnv:
     def __init__(self) -> None:
         self.action_spaces = self.state_space = self.action_space = None
         self.action_dim = self.state_dim = 0
+        self.discrete_action = True
         pass
 
     def reset(self):
@@ -54,6 +56,10 @@ class ClassicalEnv:
 
 
     def close(self):
+        pass
+
+    
+    def render(self):
         pass
 
 
@@ -80,7 +86,14 @@ class PettingZooWrapperEnv(ClassicalEnv):
         self.state_space = pz_env.state_space
         self.env = pz_env
 
-        self.action_dim = pz_env.action_space(pz_env.agents[0]).n
+        self.discrete_action = True
+        act_s = pz_env.action_space(pz_env.agents[0])
+        if isinstance(act_s, gym.spaces.Box):
+            # continuous
+            self.action_dim = act_s.shape[0] # velocity in 4 directions, plus a no_action
+            self.discrete_action = False
+        else:
+            self.action_dim = pz_env.action_space(pz_env.agents[0]).n
         self.state_dim = pz_env.state_space.shape[0]
 
 
@@ -98,6 +111,8 @@ class PettingZooWrapperEnv(ClassicalEnv):
 
     def step(self, actions):
         for act in actions:
+            if isinstance(act, np.ndarray):
+                act = np.squeeze(act)
             self.env.step(act)
 
         # return next_states, rewards, done, infos
@@ -105,7 +120,7 @@ class PettingZooWrapperEnv(ClassicalEnv):
         rewards = self._get_rewards()
         all_terminated = [self.env.terminations[a] for a in self.agents]
         all_truncated = [self.env.truncations[a] for a in self.agents]
-        done = all(all_terminated) and all(all_truncated)
+        done = all(all_terminated) or all(all_truncated)
         infos = self.env.infos
 
         return next_states, rewards, done, infos
@@ -113,6 +128,10 @@ class PettingZooWrapperEnv(ClassicalEnv):
 
     def close(self):
         return self.env.close()
+    
+
+    def render(self):
+        return self.env.render()
 
 
     @property
@@ -132,6 +151,7 @@ class OpenAIWrapperEnv(ClassicalEnv):
     def __init__(self, env:MultiAgentEnv) -> None:
         super().__init__()
         self.env = env
+        self.discrete_action = False    # only continuous
         self.action_space = self.action_spaces = env.action_space
         self.state_space = env.observation_space
         self.action_dim = env.action_space[0].n    # env.action_space is a list of Space
@@ -147,8 +167,7 @@ class OpenAIWrapperEnv(ClassicalEnv):
     
     
     def step(self, actions):
-        # make actions as one-hot
-        actions = [np.eye(self.action_dim)[act] for act in actions]
+        # actions are continuous actions
         s, r, done_list, i = self.env.step(actions)
         s = self._process_dtype(s)
         r = self._process_dtype(r)
@@ -158,6 +177,10 @@ class OpenAIWrapperEnv(ClassicalEnv):
 
     def close(self):
         return self.env.close()
+    
+
+    def render(self, mode='rgb_array'):
+        return self.env.render(mode)[0]
 
 
     @property
