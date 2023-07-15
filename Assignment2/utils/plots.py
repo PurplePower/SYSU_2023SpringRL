@@ -20,13 +20,21 @@ def plot_return_trace_area(episode_returns:List[list], labels=None, window=10):
         
         mean_trace = np.correlate(eps_return, np.ones(window)/window, mode='valid')
         t = np.arange(len(mean_trace))
-        cutted_eps = eps_return[window//2:-window//2+1]
-        full_trace = np.vstack([cutted_eps, t]).T
-        upper_bound = full_trace[cutted_eps >= mean_trace]
-        lower_bound = full_trace[cutted_eps < mean_trace]
+        cutted_eps = eps_return[window//2:-window//2+1+i]
+        stacked_window_trace = np.array([
+            eps_return[i:i+len(mean_trace)] for i in range(window)
+        ])
+
+        upper_bound = np.squeeze(np.max(stacked_window_trace, axis=0))
+        lower_bound = np.squeeze(np.min(stacked_window_trace, axis=0))
+
+
+        # full_trace = np.vstack([cutted_eps, t]).T
+        # upper_bound = full_trace[cutted_eps >= mean_trace]
+        # lower_bound = full_trace[cutted_eps < mean_trace]
         
-        upper_bound = interpolate_trace(upper_bound[:, 1], upper_bound[:, 0], t)
-        lower_bound = interpolate_trace(lower_bound[:, 1], lower_bound[:, 0], t)
+        # upper_bound = interpolate_trace(upper_bound[:, 1], upper_bound[:, 0], t)
+        # lower_bound = interpolate_trace(lower_bound[:, 1], lower_bound[:, 0], t)
         
         
         line_alpha, linewidth = 0.5, 1

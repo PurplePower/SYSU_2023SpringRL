@@ -6,9 +6,9 @@ import numpy as np
 from algorithms.actor_critic import Actor, Critic
 
 from multiagent.environment import MultiAgentEnv
-from utils.ReplayBuffer import Experience
+from utils.ReplayBuffer import Experience, ReplayBuffer, PERBuffer
 
-from typing import List
+from typing import List, Tuple
 
 
 class DDPGAgent:
@@ -125,15 +125,39 @@ class NewMADDPG:
             DDPGAgent(args, agent_id)
             for agent_id in range(self.n_agents)
         ]
+
+        self.prioritized_replay = args.get('prioritized_replay', False)
+        cls = PERBuffer if self.prioritized_replay else ReplayBuffer
+        # TODO: hybrid action spaces, obs spaces
+        state_shape = (self.n_agents, self.obs_dims[0])
+        act_shape = (self.n_agents, self.action_dims[0])
+        rew_shape = done_shape = (self.n_agents,)
+        self.buffer = cls(
+            state_shape=state_shape, act_shape=act_shape, rew_shape=rew_shape, done_shape=done_shape,
+        )
         pass
 
 
-    def train(self, sample:Experience, agent_id):
-        states = torch.tensor(sample.state, device=self.device) # shape of (batch_sz, n_agent, obs_dim)
-        actions = torch.tensor(sample.act, device=self.device)  # shape of (batch_sz, n_agent, act_dim)
-        rewards = torch.tensor(sample.reward[:, [agent_id]], device=self.device)  # only take this agent's 
-        next_states = torch.tensor(sample.next_state, device=self.device)
-        dones = torch.tensor(sample.done, device=self.device)
+    def store_experience(self, states, actions, rewards, next_states, done):
+        self.buffer.store(states, actions, rewards, next_states, done)
+        pass
+
+
+    def sample_experience(self, batch_size):
+        return self.buffer.sample(batch_size)
+    
+
+    def train(self, sample:Experience|Tuple[Experience, np.ndarray, np.ndarray], agent_id):
+        device = self.device
+        if self.prioritized_replay:
+            sample, is_weights, batch_idx = sample
+            is_weights = torch.tensor(is_weights, device=device).view([-1, 1])
+
+        states = torch.tensor(sample.state, device=device) # shape of (batch_sz, n_agent, obs_dim)
+        actions = torch.tensor(sample.act, device=device)  # shape of (batch_sz, n_agent, act_dim)
+        rewards = torch.tensor(sample.reward[:, [agent_id]], device=device)  # only take this agent's 
+        next_states = torch.tensor(sample.next_state, device=device)
+        dones = torch.tensor(sample.done, device=device)
 
         split_actions = list(torch.split(actions, 1, dim=1))  # split by agent: n_agent * (batch_sz, 1, act_dim)
         observations = list(torch.split(states, 1, dim=1))    # split by agent, too
@@ -156,7 +180,12 @@ class NewMADDPG:
             target_q = (self.gamma * q_next + rewards).detach()
 
         q = cur_agent.critic(observations, split_actions)
-        critic_loss = F.mse_loss(q, target_q).mean()
+        critic_loss = torch.pow(target_q - q, 2)
+        if self.prioritized_replay:
+            td_errors = critic_loss.detach().cpu().numpy()
+            critic_loss *= is_weights
+
+        critic_loss = torch.mean(critic_loss)
 
         # build actor loss
         split_actions[agent_id] = cur_agent.actor(observations[agent_id])
@@ -173,6 +202,9 @@ class NewMADDPG:
         cur_agent.soft_update()
         self.trained_step += 1
 
+        if self.prioritized_replay:
+            self.buffer.update_batch(batch_idx, td_errors)
+
         return actor_loss.item(), critic_loss.item()
         
 
@@ -181,7 +213,7 @@ class NewMADDPG:
         t = {
             'agents': [a.state_dict() for a in self.agents],
         }
-        reserved_attrs = ['env'] + list(t.keys())
+        reserved_attrs = ['env', 'buffer'] + list(t.keys()) # clear buffer TODO
         for k, v in self.__dict__.items():
             if k not in reserved_attrs:
                 t[k] = v
@@ -190,7 +222,7 @@ class NewMADDPG:
     
 
     def load_state_dict(self, state_dict:dict):
-        reserved_attrs = ['agents', 'env']
+        reserved_attrs = ['agents', 'env', 'buffer']
         for k, v in state_dict.items():
             if k not in reserved_attrs:
                 setattr(self, k, v)

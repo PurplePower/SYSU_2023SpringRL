@@ -1,5 +1,7 @@
 .idea
 *.pyc
 *.pt
+*.mp4
+*.pdf
 
 Assignment2/saves/*

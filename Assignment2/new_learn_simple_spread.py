@@ -65,6 +65,7 @@ if '__main__' == __name__:
     continue_training = False
 
     if continue_training:
+        #! deprecated, buffer is cleared 
         model_to_load = model_save_path / 'episode=9900-ret_per_step=-5.534-2023-07-13 16h39m02s.pt'
         print(f'Loading from {model_to_load.stem}')
     else:
@@ -91,9 +92,10 @@ if '__main__' == __name__:
             'gamma': gamma, 'tau': tau, 'epsilon': epsilon, 
             'actor_lr': actor_lr, 'critic_lr': critic_lr, 'high_act': 1,
             'device': device,
+            'prioritized_replay': True
         }
 
-    replay_buffer = ReplayBuffer()
+    # replay_buffer = ReplayBuffer()
     trainer = NewMADDPG(env, args)
 
     if continue_training:
@@ -153,12 +155,12 @@ if '__main__' == __name__:
                 ]
 
             next_states, rewards, done, info = env.step(actions)
-            replay_buffer.store(states, actions, rewards, next_states, done)
+            trainer.store_experience(states, actions, rewards, next_states, done)
             states = next_states
             eps_return += rewards[0]
 
-            if len(replay_buffer) >= batch_size:
-                batch = replay_buffer.sample(batch_size)
+            if len(trainer.buffer) >= batch_size:
+                batch = trainer.sample_experience(batch_size)
 
                 for agent_id in range(n_agent):
                     _, _ = trainer.train(batch, agent_id)

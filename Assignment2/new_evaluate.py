@@ -4,6 +4,7 @@ from tqdm import tqdm
 from pathlib import Path
 from time import time
 import os
+import argparse
 import matplotlib.pyplot as plt
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
@@ -15,12 +16,19 @@ from utils.plots import plot_return_trace_area
 
 
 if '__main__' == __name__:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env_id", default="simple_spread", type=str)
+    parser.add_argument("--n_episodes", default=100, type=int)
+    parser.add_argument("--episode_length", default=25, type=int)
+    config = parser.parse_args()
+
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     ######################################
     # making environment
     ######################################
-    episode_length = 25
+    episode_length = config.episode_length
     env = make_env('simple_spread')
     env.reset()
     assert not env.discrete_action_input
@@ -34,12 +42,30 @@ if '__main__' == __name__:
     ######################################
     # loading model
     ######################################
-    save_path = Path('SYSU_2023SpringRL/Assignment2/saves/new')
-    save_path /= 'n_eps=20000-eps_len=25-a_lr=0.0001-c_lr=0.001'
-    model_save_path = save_path / 'models'
-    model_save_path /= 'episode=19800-ret_per_step=-4.184-2023-07-13 19h37m06s.pt'
+    submission = True
 
-    image_save_path = save_path / 'imgs'
+    if submission:
+        """
+        ! 评估生成的视频输出在 'agents/maddpg/submission_output_dir' 中。
+        评估模型在 agents/maddpg/submission_model.pt，是包含 3 个 agents 的单个文件，大小约 1MB。
+        """
+
+        cur_file_path = Path(__file__)
+        save_path = cur_file_path.parent / 'agents/maddpg/'
+
+        # load model from agents/maddpg
+        model_save_path = save_path / 'submission_model.pt'
+        image_save_path = save_path / 'submission_output_dir/'
+        image_save_path.mkdir(exist_ok=True)
+    else:
+
+        save_path = Path('SYSU_2023SpringRL/Assignment2/saves/new')
+        save_path /= 'n_eps=20000-eps_len=25-a_lr=0.0001-c_lr=0.001'
+        model_save_path = save_path / 'models'
+        model_save_path /= 'episode=19600-ret_per_step=-4.105-2023-07-14 01h05m52s.pt'
+        image_save_path = save_path / 'imgs'
+
+
     for v in image_save_path.glob('model_eval*.mp4'):
         v.unlink()
 
@@ -52,7 +78,7 @@ if '__main__' == __name__:
     ########################################
     # evaluating
     ########################################
-    n_episode = 100
+    n_episode = config.n_episodes
     returns = []
     cost = 0
     for i_episode in tqdm(range(n_episode)):
@@ -71,7 +97,7 @@ if '__main__' == __name__:
             next_states, rewards, done, info = env.step(actions)
             states = next_states
             eps_return += rewards[0]
-            cost += time() - start
+            cost += time() - start  # includes action, step() time
 
             if generate_video:
                 frames.append(env.render(mode='rgb_array')[0])
@@ -91,7 +117,8 @@ if '__main__' == __name__:
 
     plot_return_trace_area([returns], ['MADDPG'])
 
-    plt.savefig(image_save_path / 'returns.png')
+    plt.savefig(image_save_path / 'eval_returns.png')
+    plt.savefig(image_save_path / 'eval_returns.pdf')
     
 
 
