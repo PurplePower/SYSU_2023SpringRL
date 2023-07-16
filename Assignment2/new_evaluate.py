@@ -73,7 +73,7 @@ if '__main__' == __name__:
     args = loaded_model['args']
 
     trainer = NewMADDPG(env, args).load_state_dict(loaded_model['trainer'])
-
+    trainer.enter_eval()
 
     ########################################
     # evaluating
@@ -110,7 +110,7 @@ if '__main__' == __name__:
     
     avg_eval_returns = np.mean(returns)
     print(
-        f'Averate return per step {avg_eval_returns:.5f}\n'
+        f'Average return per step {avg_eval_returns:.5f}\n'
         f'Time cost per step {cost / (n_episode * episode_length) * 1e3} ms'
         
     )

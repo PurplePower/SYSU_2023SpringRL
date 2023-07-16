@@ -117,14 +117,16 @@ def _static_sample(
 
 
 @jit(nopython=True)
-def _static_update_batch(
+def _static_per_process_priorities_and_update_batch(
     sum_tree:np.ndarray, min_tree:np.ndarray, batch_idx:np.ndarray, td_errors:np.ndarray,
     epsilon:float, prob_upper_bound:float, alpha:float
 ):
-    leaf_start_idx = (len(sum_tree) + 1) // 2 - 1   
     td_errors = np.minimum(np.abs(td_errors) + epsilon, prob_upper_bound)
     max_prob = td_errors.max()
     td_errors = np.power(td_errors, alpha)
+
+    leaf_start_idx = (len(sum_tree) + 1) // 2 - 1   
+    # max_prob = td_errors.max()
 
     for i in range(len(batch_idx)):
         _static_update_trees(sum_tree, min_tree, batch_idx[i] + leaf_start_idx, td_errors[i])
@@ -250,7 +252,7 @@ class PERBuffer(ReplayBuffer):
     def update_batch(self, batch_idx:np.ndarray, td_errors:np.ndarray):
         td_errors = np.squeeze(td_errors)
         if self.use_jit:
-            max_p = _static_update_batch(
+            max_p = _static_per_process_priorities_and_update_batch(
                 self.sum_tree, self.min_tree, batch_idx, td_errors, 
                 self.epsilon, self.prob_upper_bound, self.alpha
             )
@@ -259,7 +261,6 @@ class PERBuffer(ReplayBuffer):
             td_errors = np.minimum(np.abs(td_errors) + self.epsilon, self.prob_upper_bound)
             self.max_prob = max(td_errors.max(), self.max_prob)
             td_errors = np.power(td_errors, self.alpha)
-
             for idx, td_error in zip(batch_idx, td_errors):
                 self._update_trees(idx, td_error)
 
@@ -279,7 +280,47 @@ class PERBuffer(ReplayBuffer):
 
 
 
+@jit(nopython=True)
+def _static_relo_process_and_update_batch(
+    sum_tree:np.ndarray, min_tree:np.ndarray, batch_idx:np.ndarray, relo:np.ndarray,
+    epsilon:float, prob_upper_bound:float, alpha:float
+):
+    relo = np.maximum(relo, 0) + epsilon
+    max_prob = relo.max()
+    relo = np.power(relo, alpha)
+
+    leaf_start_idx = (len(sum_tree) + 1) // 2 - 1 
+
+    for i in range(len(batch_idx)):
+        _static_update_trees(sum_tree, min_tree, batch_idx[i] + leaf_start_idx, relo[i])
+
+    return max_prob
 
 
 
+class ReloPERBuffer(PERBuffer):
 
+    def __init__(self, state_shape, act_shape, rew_shape, done_shape, max_size=2 ** 19) -> None:
+        super().__init__(state_shape, act_shape, rew_shape, done_shape, max_size)
+
+
+    def update_batch(self, batch_idx: np.ndarray, relo: np.ndarray):
+        # using Max(relo, 0) + eps
+        relo = np.squeeze(relo)
+        
+        if self.use_jit:
+            max_p = _static_relo_process_and_update_batch(
+                self.sum_tree, self.min_tree, batch_idx, relo, 
+                self.epsilon, self.prob_upper_bound, self.alpha
+            )
+            self.max_prob = max(self.max_prob, max_p)
+        else:
+            relo = np.maximum(relo, 0) + self.epsilon
+            self.max_prob = max(relo.max(), self.max_prob)
+            relo = np.power(relo, self.alpha)
+            for idx, priority in zip(batch_idx, relo):
+                self._update_trees(idx, priority)
+        
+
+        pass
+        

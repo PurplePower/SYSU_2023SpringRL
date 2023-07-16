@@ -92,7 +92,7 @@ if '__main__' == __name__:
             'gamma': gamma, 'tau': tau, 'epsilon': epsilon, 
             'actor_lr': actor_lr, 'critic_lr': critic_lr, 'high_act': 1,
             'device': device,
-            'prioritized_replay': True
+            'prioritized_replay': True, 'relo': True,
         }
 
     # replay_buffer = ReplayBuffer()
@@ -141,7 +141,7 @@ if '__main__' == __name__:
         return avg_eval_returns
 
 
-
+    trainer.enter_train()
     returns = []
 
     for i_episode in tqdm(range(n_episodes)):

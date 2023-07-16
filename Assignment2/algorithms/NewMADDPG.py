@@ -6,7 +6,7 @@ import numpy as np
 from algorithms.actor_critic import Actor, Critic
 
 from multiagent.environment import MultiAgentEnv
-from utils.ReplayBuffer import Experience, ReplayBuffer, PERBuffer
+from utils.ReplayBuffer import Experience, ReplayBuffer, PERBuffer, ReloPERBuffer
 
 from typing import List, Tuple
 
@@ -22,7 +22,7 @@ class DDPGAgent:
 
     def _construct_agent(self, args: dict, agent_id):
         self.agent_id = agent_id
-        self.args = args
+        self.args = args.copy()
 
         self.obs_dim = args['obs_dims'][agent_id]
         self.state_dim = args['state_dim']
@@ -127,12 +127,18 @@ class NewMADDPG:
         ]
 
         self.prioritized_replay = args.get('prioritized_replay', False)
-        cls = PERBuffer if self.prioritized_replay else ReplayBuffer
+        self.relo = args.get('relo', False)
+        if self.relo:
+            self.prioritized_replay = False  
+
+        mem_cls = PERBuffer if self.prioritized_replay else ReplayBuffer
+        mem_cls = ReloPERBuffer if self.relo else mem_cls
+
         # TODO: hybrid action spaces, obs spaces
         state_shape = (self.n_agents, self.obs_dims[0])
         act_shape = (self.n_agents, self.action_dims[0])
         rew_shape = done_shape = (self.n_agents,)
-        self.buffer = cls(
+        self.buffer = mem_cls(
             state_shape=state_shape, act_shape=act_shape, rew_shape=rew_shape, done_shape=done_shape,
         )
         pass
@@ -149,7 +155,7 @@ class NewMADDPG:
 
     def train(self, sample:Experience|Tuple[Experience, np.ndarray, np.ndarray], agent_id):
         device = self.device
-        if self.prioritized_replay:
+        if self.prioritized_replay or self.relo:
             sample, is_weights, batch_idx = sample
             is_weights = torch.tensor(is_weights, device=device).view([-1, 1])
 
@@ -184,6 +190,12 @@ class NewMADDPG:
         if self.prioritized_replay:
             td_errors = critic_loss.detach().cpu().numpy()
             critic_loss *= is_weights
+        elif self.relo:
+            q_cur_target = cur_agent.target_critic(observations, split_actions).detach()
+            target_critic_loss = torch.pow(target_q - q_cur_target, 2)
+            relo = (critic_loss.detach() - target_critic_loss).cpu().numpy() # new_loss - old_loss
+            pass
+
 
         critic_loss = torch.mean(critic_loss)
 
@@ -204,6 +216,8 @@ class NewMADDPG:
 
         if self.prioritized_replay:
             self.buffer.update_batch(batch_idx, td_errors)
+        elif self.relo:
+            self.buffer.update_batch(batch_idx, relo)
 
         return actor_loss.item(), critic_loss.item()
         
@@ -233,6 +247,22 @@ class NewMADDPG:
         ]
         self.args['empty_construct'] = False
         return self
+
+
+    def enter_train(self):
+        for a in self.agents:
+            a.actor.train()
+            a.target_actor.train()
+            a.critic.train()
+            a.target_critic.train()
+
+
+    def enter_eval(self):
+        for a in self.agents:
+            a.actor.eval()
+            a.target_actor.eval()
+            a.critic.eval()
+            a.target_critic.eval()
 
 
 
