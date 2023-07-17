@@ -190,12 +190,6 @@ class NewMADDPG:
         if self.prioritized_replay:
             td_errors = critic_loss.detach().cpu().numpy()
             critic_loss *= is_weights
-        elif self.relo:
-            q_cur_target = cur_agent.target_critic(observations, split_actions).detach()
-            target_critic_loss = torch.pow(target_q - q_cur_target, 2)
-            relo = (critic_loss.detach() - target_critic_loss).cpu().numpy() # new_loss - old_loss
-            pass
-
 
         critic_loss = torch.mean(critic_loss)
 
@@ -210,6 +204,13 @@ class NewMADDPG:
         cur_agent.critic_optim.zero_grad()
         critic_loss.backward()
         cur_agent.critic_optim.step()
+
+        # after critic learns this batch, compare reducible loss
+        if self.relo:
+            q_cur_target = cur_agent.target_critic(observations, split_actions).detach()
+            target_critic_loss = torch.pow(target_q - q_cur_target, 2)
+            relo = (critic_loss.detach() - target_critic_loss).cpu().numpy() # new_loss - old_loss
+            pass
 
         cur_agent.soft_update()
         self.trained_step += 1

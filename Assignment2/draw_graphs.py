@@ -19,7 +19,7 @@ if __name__ == '__main__':
     per_trace = np.load(save_path / r'PER-n_eps=20000-eps_len=25-a_lr=0.0001-c_lr=0.001/returns.npz')['arr_0']
 
     # load ReLo 
-    relo_trace = np.load(save_path / r'ReLo-n_eps=20000-eps_len=25-a_lr=0.0001-c_lr=0.001\returns.npz')['arr_0']
+    relo_trace = np.load(save_path / r'Relo-n_eps=20000-eps_len=25-a_lr=0.0001-c_lr=0.001\returns.npz')['arr_0']
 
 
     plot_return_trace_area([per_trace, relo_trace], ['PER MADDPG', 'ReLo'])

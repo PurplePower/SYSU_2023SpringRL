@@ -81,6 +81,7 @@ if '__main__' == __name__:
     n_episode = config.n_episodes
     returns = []
     cost = 0
+    all_frames = []
     for i_episode in tqdm(range(n_episode)):
         states = env.reset()
         eps_return = 0
@@ -96,7 +97,7 @@ if '__main__' == __name__:
                 ]
             next_states, rewards, done, info = env.step(actions)
             states = next_states
-            eps_return += rewards[0]
+            eps_return += np.mean(rewards)
             cost += time() - start  # includes action, step() time
 
             if generate_video:
@@ -105,6 +106,7 @@ if '__main__' == __name__:
         returns.append(eps_return / episode_length)
 
         if generate_video:
+            all_frames.extend(frames)
             clip = ImageSequenceClip(frames, fps=10)
             clip.write_videofile(str(image_save_path / f'model_eval-eps={i_episode}.mp4'), logger=None)
     
@@ -119,6 +121,10 @@ if '__main__' == __name__:
 
     plt.savefig(image_save_path / 'eval_returns.png')
     plt.savefig(image_save_path / 'eval_returns.pdf')
+
+    # save all videos in one
+    clip = ImageSequenceClip(all_frames, fps=10)
+    clip.write_videofile(str(image_save_path / f'model_eval-all-in-one.mp4'), logger=None)
     
 
 

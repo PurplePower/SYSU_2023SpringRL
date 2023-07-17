@@ -1,18 +1,24 @@
 import argparse
 import time
 import numpy as np
-from utils.make_env import _make_env_legacy
+import torch
+import os
+os.environ['SUPPRESS_MA_PROMPT'] = "1"
+from utils.make_env import make_env
 
-# TODO: replace with your models
-from agents.random.submission import Agents as RandomSampleAgents
-from agents.random_network.submission import Agents as RandomNetworkAgents
+#! 此处加载类
+from agents.maddpg.submission import NewMADDPG
 
 
 def run(config):
-    env = _make_env_legacy(config.env_id, discrete_action=True)
+    env = make_env(config.env_id)
 
-    # TODO: replace with you own agent model
-    agents = RandomNetworkAgents(env.observation_space[0].shape[0], env.action_space[0].n)
+    # ! 可能需要确保以下加载路径正确
+    state_dict = torch.load(r'SYSU_2023SpringRL\Assignment2\agents\maddpg\submission_model.pt')
+    args = state_dict['args']
+    agents = NewMADDPG(env, args)
+    agents.load_state_dict(state_dict['trainer'])
+
 
     total_reward = 0.
     for ep_i in range(config.n_episodes):
@@ -22,13 +28,16 @@ def run(config):
         episode_reward = 0.
         for t_i in range(config.episode_length):
             calc_start = time.time()
+
+            # ! 此处获取动作
             actions = agents.act(obs)
+
             obs, rewards, dones, infos = env.step(actions)
             episode_reward += np.array(rewards).sum()
             calc_end = time.time()
             elapsed = (calc_end - calc_start) * 1000.0
             # the elapsed should not exceed 10ms per step
-            print("Elapsed %f" % (elapsed))
+            # print("Elapsed %f" % (elapsed))
             # env.render('human')
         total_reward += episode_reward/config.episode_length
         print("Episode reward: %.2f" % (episode_reward/config.episode_length))
